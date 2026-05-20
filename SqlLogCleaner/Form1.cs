@@ -486,14 +486,39 @@ namespace SqlLogCleaner
         private void RefreshLogListQuietly(List<BatchTaskItem> oldTasks)
         {
             string connStr = txtConnectionString.Text.Trim();
+
+            // ⭐【铁腕彻底修复】：回盘脚本同步升级为 VARCHAR 容错缓冲技术，彻底绝杀奇葩库名引发的 money 转换报错
             string getLogDetailsSql = @"
-                DECLARE @LogSpace TABLE ( DBName sysname, LogSizeMB money, LogSpaceUsedPct money, Status int );
-                INSERT INTO @LogSpace EXEC('DBCC SQLPERF(LOGSPACE)');
-                SELECT ls.DbName, f.name AS LogFileName, CAST(ls.LogSizeMB AS DECIMAL(18,2)) AS LogSizeMB,
-                       CAST((ls.DbName * ls.LogSpaceUsedPct / 100.0) AS DECIMAL(18,2)) AS UsedSpaceMB,
-                       CAST(ls.LogSpaceUsedPct AS DECIMAL(18,2)) AS LogSpaceUsedPct
-                FROM @LogSpace ls INNER JOIN sys.databases d ON ls.DbName = d.name
-                INNER JOIN sys.master_files f ON d.database_id = f.database_id WHERE f.type = 1 AND d.database_id > 4 AND d.state = 0;";
+        DECLARE @LogSpace TABLE ( 
+            DbName sysname, 
+            LogSizeMB VARCHAR(50), 
+            LogSpaceUsedPct VARCHAR(50), 
+            Status int 
+        );
+        INSERT INTO @LogSpace EXEC('DBCC SQLPERF(LOGSPACE)');
+        
+        IF OBJECT_ID('sys.databases') IS NOT NULL
+        BEGIN
+            SELECT ls.DbName, f.name AS LogFileName, 
+                   CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 THEN CAST(ls.LogSizeMB AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSizeMB,
+                   CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 AND ISNUMERIC(ls.LogSpaceUsedPct) = 1 
+                        THEN (CAST(ls.LogSizeMB AS MONEY) * CAST(ls.LogSpaceUsedPct AS MONEY) / 100.0) ELSE 0 END AS DECIMAL(18,2)) AS UsedSpaceMB,
+                   CAST(CASE WHEN ISNUMERIC(ls.LogSpaceUsedPct) = 1 THEN CAST(ls.LogSpaceUsedPct AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSpaceUsedPct
+            FROM @LogSpace ls INNER JOIN sys.databases d ON ls.DbName = d.name
+            INNER JOIN sys.master_files f ON d.database_id = f.database_id WHERE f.type = 1 AND d.database_id > 4 AND d.state = 0
+            ORDER BY LogSizeMB DESC;
+        END
+        ELSE
+        BEGIN
+            SELECT ls.DbName, f.name AS LogFileName, 
+                   CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 THEN CAST(ls.LogSizeMB AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSizeMB,
+                   CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 AND ISNUMERIC(ls.LogSpaceUsedPct) = 1 
+                        THEN (CAST(ls.LogSizeMB AS MONEY) * CAST(ls.LogSpaceUsedPct AS MONEY) / 100.0) ELSE 0 END AS DECIMAL(18,2)) AS UsedSpaceMB,
+                   CAST(CASE WHEN ISNUMERIC(ls.LogSpaceUsedPct) = 1 THEN CAST(ls.LogSpaceUsedPct AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSpaceUsedPct
+            FROM @LogSpace ls INNER JOIN master..sysaltfiles f ON db_name(f.dbid) = ls.DbName
+            WHERE (f.status & 0x40) <> 0 AND f.dbid > 4 ORDER BY LogSizeMB DESC;
+        END";
+
             try
             {
                 using (SqlConnection conn = new SqlConnection(connStr))
@@ -521,12 +546,27 @@ namespace SqlLogCleaner
                             row["Strategy"] = sizeMB > 51200 ? "循环递减法(20%)" : "直接指定大小(10M)";
                         }
                     }
+
+                    // 1. 重新绑定更新后的 DataTable 数据源
                     dgvLogList.DataSource = dt;
-                    foreach (DataGridViewRow row in dgvLogList.Rows) row.Cells["colSelect"].Value = false;
+
+                    // 2. 批量复位所有行的复选框
+                    foreach (DataGridViewRow row in dgvLogList.Rows)
+                    {
+                        row.Cells["colSelect"].Value = false;
+                    }
+
+                    // 3. 击穿重绘缓存
+                    dgvLogList.Invalidate();
+                    dgvLogList.Refresh();
+
                     AppendLogLine("🔄 已自动完成资产回盘，最新物理体积已与服务器完全同步。");
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                AppendLogLine("❌ 自动回盘刷新失败: " + ex.Message);
+            }
         }
 
         private void AppendLogLine(string text)
