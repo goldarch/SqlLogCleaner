@@ -3,6 +3,10 @@
 [![License: MIT](https://img.shields.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.shields.io/badge/.NET-4.0%20%7C%20WinForms-blue.svg)](https://dotnet.microsoft.com/)
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/goldarch/MyAssets/main/SqlLogCleaner/SqlLogCleaner-v2.0.png" alt="SqlLogCleaner 封面图" width="600">
+</p>
+
 一款专为企业级多账套环境（如金蝶、用友等 ERP 生产环境）打造的 SQL Server 事务日志（LDF）批量资产盘点与安全自适应收缩工具。
 
 纯绿色单文件设计，零外部依赖，完美向后兼容至 Windows XP / Server 2003，向前兼容至最新 Windows Server 环境。
