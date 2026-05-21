@@ -11,14 +11,15 @@ namespace SqlLogCleaner
 {
     public partial class Form1 : Form
     {
-        // ⭐【核心技术升级】：直接通过反射获取项目属性(AssemblyInfo)中的标准四位版本号（例如：2.0.0.1）
-        // 这样以后只要在 VS 项目属性里改版本，代码完全不用动
         private readonly string AppVersion = "ver " + Application.ProductVersion;
 
         private readonly string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "conn_config.txt");
         private Dictionary<string, string> connectionDict = new Dictionary<string, string>();
         private int currentSqlMajorVersion = 11;
         private bool isFullyConnected = false;
+
+        // ?【加密混淆密钥】：用于对连接字符串进行异或混淆，防止肉眼直视与明文泄露
+        private const byte CryptoMask = 0x5A;
 
         public Form1()
         {
@@ -28,17 +29,61 @@ namespace SqlLogCleaner
             LoadSavedConnections();
             SetupGridColumns();
 
-            // ⭐【核心修复一】：显式订阅 Shown 事件，确保在窗体完全暴露在屏幕上的最后一刻，强行把状态和标题拉满
             this.Shown += new EventHandler(Form1_Shown);
         }
 
-        // ⭐【核心修复二】：在 Shown 事件中执行最终的界面统治权，彻底压制并修正生命周期导致的失效 Bug
         private void Form1_Shown(object sender, EventArgs e)
         {
             this.WindowState = FormWindowState.Maximized;
             this.Text = string.Format("SQL Server 事务日志批量安全清理工具 {0} (.NET 4.0 绿色版)", AppVersion);
             this.Refresh();
         }
+
+        #region ? 核心加密/解密算法（防君子不防小人）
+
+        /// <summary>
+        /// 加密：将明文连接字符串混淆为不可读的密文
+        /// </summary>
+        private string EncryptConnectionString(string plainText)
+        {
+            if (string.IsNullOrEmpty(plainText)) return string.Empty;
+            try
+            {
+                byte[] rawBytes = Encoding.UTF8.GetBytes(plainText);
+                for (int i = 0; i < rawBytes.Length; i++)
+                {
+                    rawBytes[i] = (byte)(rawBytes[i] ^ CryptoMask); // 轻量级异或打乱
+                }
+                return Convert.ToBase64String(rawBytes); // 转化为标准的无污染Base64密文
+            }
+            catch
+            {
+                return plainText; // 异常保护
+            }
+        }
+
+        /// <summary>
+        /// 解密：将密文逆向还原为标准的连接字符串
+        /// </summary>
+        private string DecryptConnectionString(string cipherText)
+        {
+            if (string.IsNullOrEmpty(cipherText)) return string.Empty;
+            try
+            {
+                byte[] cipherBytes = Convert.FromBase64String(cipherText);
+                for (int i = 0; i < cipherBytes.Length; i++)
+                {
+                    cipherBytes[i] = (byte)(cipherBytes[i] ^ CryptoMask); // 逆向异或还原
+                }
+                return Encoding.UTF8.GetString(cipherBytes);
+            }
+            catch
+            {
+                return cipherText; // 如果本来就是明文（兼容老配置文件），则直接返回明文
+            }
+        }
+
+        #endregion
 
         private void SetupGridColumns()
         {
@@ -80,7 +125,7 @@ namespace SqlLogCleaner
 
         private void InitWarningMessage()
         {
-            txtLogOutput.Text = "⚠️ 【标准运维规范与批量操作风险提示】" + Environment.NewLine +
+            txtLogOutput.Text = "?? 【标准运维规范与批量操作风险提示】" + Environment.NewLine +
                              "------------------------------------------------------------------------------------------------------------------" + Environment.NewLine +
                              "1. 跨版本智能自适应：SQL 2000~2008 自动路由至经典截断；SQL 2012~2022+ 采用简单模式收缩逻辑。" + Environment.NewLine +
                              "2. 核心规程（三步保命法）：" + Environment.NewLine +
@@ -89,13 +134,13 @@ namespace SqlLogCleaner
                              "   第二步：前置备份成功后，勾选右侧需要处理的账套，点击【开始批量清理选中的日志】进行安全收缩。" + Environment.NewLine + Environment.NewLine +
                              "   第三步：清理完成后，立即再次执行【完整备份】，重新建立干净健康的事务日志链。" + Environment.NewLine +
                              "------------------------------------------------------------------------------------------------------------------" + Environment.NewLine +
-                             "💡 【行级自适应策略审计规范：】" + Environment.NewLine +
+                             "?? 【行级自适应策略审计规范：】" + Environment.NewLine +
                              "   本工具已将控制粒度下沉至『账套行级』。当连接成功后，系统会自动审计右侧资产清单：" + Environment.NewLine +
-                             "   ▶ 对体积平稳（<=50GB）的普通账套，行内默认分派【直接指定大小(10M)】策略以提升清洗效率；" + Environment.NewLine +
-                             "   ▶ 对体积肥大（>50GB）的超大账套，行内将自动越级并分派【循环递减法(20%)】安全下楼梯策略。" + Environment.NewLine +
+                             "   ? 对体积平稳（<=50GB）的普通账套，行内默认分派【直接指定大小(10M)】策略以提升清洗效率；" + Environment.NewLine +
+                             "   ? 对体积肥大（>50GB）的超大账套，行内将自动越级并分派【循环递减法(20%)】安全下楼梯策略。" + Environment.NewLine +
                              "   ※ 管理自主权：运维人员可直接在列表中单独点击修改任意一行的收缩策略，提交后系统将精准精细化执行。" + Environment.NewLine +
                              "------------------------------------------------------------------------------------------------------------------" + Environment.NewLine +
-                             "3. 就绪状态：安全清理核心工坊 " + AppVersion + " 已就绪，等待连接数据库服务器..." + Environment.NewLine + Environment.NewLine;
+                             "3. 就绪状态：安全清理核心工坊 " + AppVersion + " 已就绪，已开启【连接串安全隐私混淆】，安全锁固。等待连接..." + Environment.NewLine + Environment.NewLine;
 
             txtLogOutput.SelectionStart = txtLogOutput.Text.Length;
             txtLogOutput.ScrollToCaret();
@@ -133,7 +178,9 @@ namespace SqlLogCleaner
                         if (parts.Length >= 2)
                         {
                             string name = parts[0].Trim();
-                            string conn = parts[1].Trim();
+                            // ?【读取时解密】：动态逆向解密还原出可供内部驱动的正常连接串
+                            string conn = DecryptConnectionString(parts[1].Trim());
+
                             if (!connectionDict.ContainsKey(name))
                             {
                                 connectionDict.Add(name, conn);
@@ -145,7 +192,7 @@ namespace SqlLogCleaner
             }
             catch (Exception ex)
             {
-                AppendLogLine("❌ 加载历史连接失败: " + ex.Message);
+                AppendLogLine("? 加载历史连接失败: " + ex.Message);
             }
 
             cmbSavedConnections.SelectedIndex = 0;
@@ -190,11 +237,14 @@ namespace SqlLogCleaner
                 foreach (var kvp in connectionDict)
                 {
                     if (kvp.Key == "本地默认连接 (Windows验证)") continue;
-                    linesToSave.Add(string.Format("{0}|{1}", kvp.Key, kvp.Value));
+
+                    // ?【保存时加密】：将敏感的目标明文转为密文形态后存盘
+                    string encryptedConn = EncryptConnectionString(kvp.Value);
+                    linesToSave.Add(string.Format("{0}|{1}", kvp.Key, encryptedConn));
                 }
 
                 File.WriteAllLines(configPath, linesToSave.ToArray(), Encoding.UTF8);
-                MessageBox.Show("连接保存成功！", "成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("连接保存并加密成功！", "成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 LoadSavedConnections();
                 if (cmbSavedConnections.Items.Contains(name)) cmbSavedConnections.SelectedItem = name;
@@ -214,7 +264,7 @@ namespace SqlLogCleaner
                 txtConnectionString.Text = connectionDict[selectedName];
                 txtConnName.Text = selectedName.Contains("本地默认连接") ? "" : selectedName;
                 ResetOperationGroup();
-                AppendLogLine(string.Format("🔄 切换到历史连接 [{0}]，右侧已整理列表清场，请重新点击连接加载。", selectedName));
+                AppendLogLine(string.Format("?? 切换到历史连接 [{0}]，右侧已整理列表清场，请重新点击连接加载。", selectedName));
             }
         }
 
@@ -225,7 +275,7 @@ namespace SqlLogCleaner
             {
                 txtConnectionString.Text = template.Value;
                 ResetOperationGroup();
-                AppendLogLine(string.Format("🔄 切换到快捷模板 [{0}]，右侧已整理列表清场，请重新点击连接加载。", template.Name));
+                AppendLogLine(string.Format("?? 切换到快捷模板 [{0}]，右侧已整理列表清场，请重新点击连接加载。", template.Name));
             }
         }
 
@@ -286,7 +336,7 @@ namespace SqlLogCleaner
                     if (dt.Rows.Count == 0)
                     {
                         ResetOperationGroup();
-                        AppendLogLine("⚠️ 未找到可用的用户数据库日志资产！");
+                        AppendLogLine("?? 未找到可用的用户数据库日志资产！");
                         return;
                     }
 
@@ -316,17 +366,17 @@ namespace SqlLogCleaner
                     this.Text = string.Format("SQL Server 事务日志批量安全清理工具 {0} [已连接: {1}]", AppVersion, friendlyVerName);
                     isFullyConnected = true;
 
-                    AppendLogLine(string.Format("✅ 成功建立连接！当前服务器环境：{0}，已全盘加载 {1} 个账套资产。", friendlyVerName, dt.Rows.Count));
+                    AppendLogLine(string.Format("? 成功建立连接！当前服务器环境：{0}，已全盘加载 {1} 个账套资产。", friendlyVerName, dt.Rows.Count));
                     if (autoGradientCount > 0)
                     {
-                        AppendLogLine(string.Format("   💡 [策略组提示]：系统已自动识别并为右侧 [{0}] 个大于 50GB 的超大数据库自适应开启了【循环递减法(20%)】保命策略，请核对。", autoGradientCount));
+                        AppendLogLine(string.Format("   ?? [策略组提示]：系统已自动识别并为右侧 [{0}] 个大于 50GB 的超大数据库自适应开启了【循环递减法(20%)】保命策略，请核对。", autoGradientCount));
                     }
                 }
             }
             catch (Exception ex)
             {
                 ResetOperationGroup();
-                AppendLogLine("❌ 连接失败: " + ex.Message);
+                AppendLogLine("? 连接失败: " + ex.Message);
             }
         }
 
@@ -370,14 +420,14 @@ namespace SqlLogCleaner
             DialogResult dr = MessageBox.Show(
                 string.Format("您当前共勾选了 [{0}] 个数据库账套进行批量日志收缩！" + Environment.NewLine +
                               "系统将严格根据列表【每行独立指定的策略】执行精细化清洗。" + Environment.NewLine + Environment.NewLine +
-                              "⚠️ 重要安全确认：请务必确保这些生产库在操作前已执行【完整备份】，是否继续？",
+                              "?? 重要安全确认：请务必确保这些生产库在操作前已执行【完整备份】，是否继续？",
                               selectedTasks.Count),
                 "批量操作刚性安全确认", MessageBoxButtons.YesNo, MessageBoxIcon.Warning
             );
 
             if (dr != DialogResult.Yes) return;
 
-            AppendLogLine(string.Format("\r\n🚀 开始执行流水线清洗任务... 预备处理账套数: {0} ------------------", selectedTasks.Count));
+            AppendLogLine(string.Format("\r\n?? 开始执行流水线清洗任务... 预备处理账套数: {0} ------------------", selectedTasks.Count));
             int successCount = 0; int failCount = 0;
             string connStr = txtConnectionString.Text.Trim();
 
@@ -387,7 +437,7 @@ namespace SqlLogCleaner
                 dgvLogList.Update();
 
                 double initialSize = Convert.ToDouble(task.TotalSizeMB);
-                AppendLogLine(string.Format("⏳ [{0}] 路由触发 -> 选定策略:【{1}】(日志当前: {2} MB)", task.DbName, task.ChosenStrategy, task.TotalSizeMB));
+                AppendLogLine(string.Format("? [{0}] 路由触发 -> 选定策略:【{1}】(日志当前: {2} MB)", task.DbName, task.ChosenStrategy, task.TotalSizeMB));
 
                 try
                 {
@@ -433,7 +483,7 @@ namespace SqlLogCleaner
                                 if (realCurrentSize >= previousSize) break;
                                 previousSize = realCurrentSize;
 
-                                AppendLogLine(string.Format("    ⚡ 梯度下移中 -> 当前物理体积已降至: {0} MB", Math.Round(realCurrentSize)));
+                                AppendLogLine(string.Format("    ? 梯度下移中 -> 当前物理体积已降至: {0} MB", Math.Round(realCurrentSize)));
                                 txtLogOutput.Refresh();
                             }
 
@@ -448,21 +498,21 @@ namespace SqlLogCleaner
                         }
 
                         successCount++;
-                        dgvLogList.Rows[task.GridRowIndex].Cells["colStatus"].Value = "🟢 完成";
-                        AppendLogLine(string.Format("    ┗ 🟢 成功：数据库 [{0}] 账套收缩任务顺利完成。", task.DbName));
+                        dgvLogList.Rows[task.GridRowIndex].Cells["colStatus"].Value = "?? 完成";
+                        AppendLogLine(string.Format("    ┗ ?? 成功：数据库 [{0}] 账套收缩任务顺利完成。", task.DbName));
                     }
                 }
                 catch (Exception ex)
                 {
                     failCount++;
-                    dgvLogList.Rows[task.GridRowIndex].Cells["colStatus"].Value = "🔴 失败";
-                    AppendLogLine(string.Format("    ┗ 🔴 失败：数据库 [{0}] 清洗阻断！异常原因: {1}", task.DbName, ex.Message));
+                    dgvLogList.Rows[task.GridRowIndex].Cells["colStatus"].Value = "?? 失败";
+                    AppendLogLine(string.Format("    ┗ ?? 失败：数据库 [{0}] 清洗阻断！异常原因: {1}", task.DbName, ex.Message));
                 }
 
                 txtLogOutput.Refresh(); dgvLogList.Refresh();
             }
 
-            AppendLogLine(string.Format("🏁 集中清洗任务执行完毕！成功: {0} 个，失败: {1} 个。请立刻执行规范中的后置完整备份！\r\n", successCount, failCount));
+            AppendLogLine(string.Format("?? 集中清洗任务执行完毕！成功: {0} 个，失败: {1} 个。请立刻执行规范中的后置完整备份！\r\n", successCount, failCount));
             RefreshLogListQuietly(selectedTasks);
         }
 
@@ -486,38 +536,30 @@ namespace SqlLogCleaner
         private void RefreshLogListQuietly(List<BatchTaskItem> oldTasks)
         {
             string connStr = txtConnectionString.Text.Trim();
-
-            // ⭐【铁腕彻底修复】：回盘脚本同步升级为 VARCHAR 容错缓冲技术，彻底绝杀奇葩库名引发的 money 转换报错
             string getLogDetailsSql = @"
-        DECLARE @LogSpace TABLE ( 
-            DbName sysname, 
-            LogSizeMB VARCHAR(50), 
-            LogSpaceUsedPct VARCHAR(50), 
-            Status int 
-        );
-        INSERT INTO @LogSpace EXEC('DBCC SQLPERF(LOGSPACE)');
-        
-        IF OBJECT_ID('sys.databases') IS NOT NULL
-        BEGIN
-            SELECT ls.DbName, f.name AS LogFileName, 
-                   CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 THEN CAST(ls.LogSizeMB AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSizeMB,
-                   CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 AND ISNUMERIC(ls.LogSpaceUsedPct) = 1 
-                        THEN (CAST(ls.LogSizeMB AS MONEY) * CAST(ls.LogSpaceUsedPct AS MONEY) / 100.0) ELSE 0 END AS DECIMAL(18,2)) AS UsedSpaceMB,
-                   CAST(CASE WHEN ISNUMERIC(ls.LogSpaceUsedPct) = 1 THEN CAST(ls.LogSpaceUsedPct AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSpaceUsedPct
-            FROM @LogSpace ls INNER JOIN sys.databases d ON ls.DbName = d.name
-            INNER JOIN sys.master_files f ON d.database_id = f.database_id WHERE f.type = 1 AND d.database_id > 4 AND d.state = 0
-            ORDER BY LogSizeMB DESC;
-        END
-        ELSE
-        BEGIN
-            SELECT ls.DbName, f.name AS LogFileName, 
-                   CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 THEN CAST(ls.LogSizeMB AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSizeMB,
-                   CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 AND ISNUMERIC(ls.LogSpaceUsedPct) = 1 
-                        THEN (CAST(ls.LogSizeMB AS MONEY) * CAST(ls.LogSpaceUsedPct AS MONEY) / 100.0) ELSE 0 END AS DECIMAL(18,2)) AS UsedSpaceMB,
-                   CAST(CASE WHEN ISNUMERIC(ls.LogSpaceUsedPct) = 1 THEN CAST(ls.LogSpaceUsedPct AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSpaceUsedPct
-            FROM @LogSpace ls INNER JOIN master..sysaltfiles f ON db_name(f.dbid) = ls.DbName
-            WHERE (f.status & 0x40) <> 0 AND f.dbid > 4 ORDER BY LogSizeMB DESC;
-        END";
+                DECLARE @LogSpace TABLE ( DbName sysname, LogSizeMB VARCHAR(50), LogSpaceUsedPct VARCHAR(50), Status int );
+                INSERT INTO @LogSpace EXEC('DBCC SQLPERF(LOGSPACE)');
+                IF OBJECT_ID('sys.databases') IS NOT NULL
+                BEGIN
+                    SELECT ls.DbName, f.name AS LogFileName, 
+                           CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 THEN CAST(ls.LogSizeMB AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSizeMB,
+                           CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 AND ISNUMERIC(ls.LogSpaceUsedPct) = 1 
+                                THEN (CAST(ls.LogSizeMB AS MONEY) * CAST(ls.LogSpaceUsedPct AS MONEY) / 100.0) ELSE 0 END AS DECIMAL(18,2)) AS UsedSpaceMB,
+                           CAST(CASE WHEN ISNUMERIC(ls.LogSpaceUsedPct) = 1 THEN CAST(ls.LogSpaceUsedPct AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSpaceUsedPct
+                    FROM @LogSpace ls INNER JOIN sys.databases d ON ls.DbName = d.name
+                    INNER JOIN sys.master_files f ON d.database_id = f.database_id WHERE f.type = 1 AND d.database_id > 4 AND d.state = 0
+                    ORDER BY LogSizeMB DESC;
+                END
+                ELSE
+                BEGIN
+                    SELECT ls.DbName, f.name AS LogFileName, 
+                           CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 THEN CAST(ls.LogSizeMB AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSizeMB,
+                           CAST(CASE WHEN ISNUMERIC(ls.LogSizeMB) = 1 AND ISNUMERIC(ls.LogSpaceUsedPct) = 1 
+                                THEN (CAST(ls.LogSizeMB AS MONEY) * CAST(ls.LogSpaceUsedPct AS MONEY) / 100.0) ELSE 0 END AS DECIMAL(18,2)) AS UsedSpaceMB,
+                           CAST(CASE WHEN ISNUMERIC(ls.LogSpaceUsedPct) = 1 THEN CAST(ls.LogSpaceUsedPct AS MONEY) ELSE 0 END AS DECIMAL(18,2)) AS LogSpaceUsedPct
+                    FROM @LogSpace ls INNER JOIN master..sysaltfiles f ON db_name(f.dbid) = ls.DbName
+                    WHERE (f.status & 0x40) <> 0 AND f.dbid > 4 ORDER BY LogSizeMB DESC;
+                END";
 
             try
             {
@@ -546,26 +588,18 @@ namespace SqlLogCleaner
                             row["Strategy"] = sizeMB > 51200 ? "循环递减法(20%)" : "直接指定大小(10M)";
                         }
                     }
-
-                    // 1. 重新绑定更新后的 DataTable 数据源
                     dgvLogList.DataSource = dt;
+                    foreach (DataGridViewRow row in dgvLogList.Rows) row.Cells["colSelect"].Value = false;
 
-                    // 2. 批量复位所有行的复选框
-                    foreach (DataGridViewRow row in dgvLogList.Rows)
-                    {
-                        row.Cells["colSelect"].Value = false;
-                    }
-
-                    // 3. 击穿重绘缓存
                     dgvLogList.Invalidate();
                     dgvLogList.Refresh();
 
-                    AppendLogLine("🔄 已自动完成资产回盘，最新物理体积已与服务器完全同步。");
+                    AppendLogLine("?? 已自动完成资产回盘，最新物理体积已与服务器完全同步。");
                 }
             }
             catch (Exception ex)
             {
-                AppendLogLine("❌ 自动回盘刷新失败: " + ex.Message);
+                AppendLogLine("? 自动回盘刷新失败: " + ex.Message);
             }
         }
 
