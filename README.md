@@ -49,6 +49,12 @@
 * **目标框架**：.NET Framework 4.0 (支持在无任何高版本运行库的古董机房服务器上直接绿色运行)
 * **数据库兼容性**：SQL Server 2000 / 2005 / 2008 / 2012 / 2014 / 2016 / 2017 / 2019 / 2022+
 
+## 一些备注或知识碎片：
+
+⚠️ 安全合规与执行预警备份前置：在执行 SafeTruncateLog 前，请确保已利用备份策略（如 BACKUP LOG）转储日志。否则在生产环境直接切换 SIMPLE 会破坏灾备链并截断活动日志。高可用镜像/AlwaysOn 提示：若目标数据库处于镜像或 AlwaysOn 可用性组中，其无法被设为 SIMPLE 恢复模式，上述日志清理步骤需通过主库的 BACKUP LOG 策略处理 Microsoft Learn。日志文件名适配：上述 DBCC SHRINKFILE 语句假设日志文件名为 [数据库名_log]。如果由于历史迁移導致物理文件名不一致，请在执行盘点时，通过查询 sys.database_files 动态获取真实的日志逻辑文件名进行替换 Microsoft Learn。
+
+SQL Server 日志收缩严禁直接使用 DBCC SHRINKDATABASE，这会产生严重的物理磁盘碎片。推荐的标准安全做法是：截断日志 \(\rightarrow \) 将恢复模式切换为 SIMPLE \(\rightarrow \) 释放空间 \(\rightarrow \) 切回 FULL。
+
 ## ⚖️ 开源许可证
 
 本项目基于 **[MIT License](LICENSE)** 许可证开源。包含强烈的免责声明（“AS IS”），商业或个人魔改、闭源、分发完全自由，原作者不承担由于生产环境不规范操作引发的任何数据安全或运维事故责任。
