@@ -3,6 +3,10 @@
 [![License: MIT](https://img.shields.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.shields.io/badge/.NET-4.0%20%7C%20WinForms-blue.svg)](https://dotnet.microsoft.com/)
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/goldarch/MyAssets/main/SqlLogCleaner/SqlLogCleaner-v2.0.png" alt="SqlLogCleaner 封面图" width="600">
+</p>
+
 一款专为企业级多账套环境（如金蝶、用友等 ERP 生产环境）打造的 SQL Server 事务日志（LDF）批量资产盘点与安全自适应收缩工具。
 
 纯绿色单文件设计，零外部依赖，完美向后兼容至 Windows XP / Server 2003，向前兼容至最新 Windows Server 环境。
@@ -44,6 +48,12 @@
 * **开发环境**：Visual Studio 2012 / 2019+
 * **目标框架**：.NET Framework 4.0 (支持在无任何高版本运行库的古董机房服务器上直接绿色运行)
 * **数据库兼容性**：SQL Server 2000 / 2005 / 2008 / 2012 / 2014 / 2016 / 2017 / 2019 / 2022+
+
+## 一些备注或知识碎片：
+
+⚠️ 安全合规与执行预警备份前置：在执行 SafeTruncateLog 前，请确保已利用备份策略（如 BACKUP LOG）转储日志。否则在生产环境直接切换 SIMPLE 会破坏灾备链并截断活动日志。高可用镜像/AlwaysOn 提示：若目标数据库处于镜像或 AlwaysOn 可用性组中，其无法被设为 SIMPLE 恢复模式，上述日志清理步骤需通过主库的 BACKUP LOG 策略处理 Microsoft Learn。日志文件名适配：上述 DBCC SHRINKFILE 语句假设日志文件名为 [数据库名_log]。如果由于历史迁移導致物理文件名不一致，请在执行盘点时，通过查询 sys.database_files 动态获取真实的日志逻辑文件名进行替换 Microsoft Learn。
+
+SQL Server 日志收缩严禁直接使用 DBCC SHRINKDATABASE，这会产生严重的物理磁盘碎片。推荐的标准安全做法是：截断日志 \(\rightarrow \) 将恢复模式切换为 SIMPLE \(\rightarrow \) 释放空间 \(\rightarrow \) 切回 FULL。
 
 ## ⚖️ 开源许可证
 
